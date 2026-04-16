@@ -1,0 +1,25 @@
+SELECT 
+    -- Handling missing borough data
+    COALESCE(work_location_borough, 'REMOTE/UNKNOWN') AS Borough,
+
+    -- 1. Total Managers in this Borough
+    COUNTIF(is_manager = TRUE) AS `Total Managers`,
+
+    -- 2. Number of Violators in this Borough
+    COUNTIF(is_violation = TRUE) AS `Number of Violators`,
+
+    -- 3. Real Violation Rate % by Borough (Violators / Managers)
+    ROUND(
+        (COUNTIF(is_violation = TRUE) / NULLIF(COUNTIF(is_manager = TRUE), 0)) * 100, 
+        2
+    ) AS `Borough Violation Rate %`,
+
+    -- 4. Total Taxpayer Loss by Borough (Sum of OT Paid for Violators)
+    ROUND(
+        SUM(CASE WHEN is_violation = TRUE THEN total_ot_paid ELSE 0 END), 
+        2
+    ) AS `Borough Taxpayer Loss`
+
+FROM `pay-errors.otpay.top_5_agencies_labels`
+GROUP BY 1
+ORDER BY `Borough Taxpayer Loss` DESC;
