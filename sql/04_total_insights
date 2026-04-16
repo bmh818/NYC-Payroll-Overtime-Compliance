@@ -1,0 +1,25 @@
+SELECT 
+    -- 1. Total Workers in the ENTIRE NYC Dataset (Global Scale)
+    (SELECT COUNT(*) FROM `pay-errors.otpay.clean_payroll_data_leave_status`) as total_nyc_workers,
+
+    -- 2. Total Workers in our Top 5 Agencies
+    COUNT(*) as top_5_population,
+
+    -- 3. Manager vs Non-Manager Counts (within Top 5)
+    COUNTIF(is_manager = TRUE) as top_5_managers,
+    COUNTIF(is_manager = FALSE) as top_5_non_managers,
+
+    -- 4. Number of Violating Managers
+    COUNTIF(is_violation = TRUE) as violating_manager_count,
+
+    -- 5. Violation Percentages
+    -- Among the Top 5 Managers
+    ROUND(COUNTIF(is_violation = TRUE) / NULLIF(COUNTIF(is_manager = TRUE), 0) * 100, 2) as pct_violation_among_managers,
+    
+    -- Among the Entire City Workforce
+    ROUND(COUNTIF(is_violation = TRUE) / (SELECT COUNT(*) FROM `pay-errors.otpay.clean_payroll_data_leave_status`) * 100, 2) as pct_violation_of_all_nyc,
+
+    -- 6. Financial Impact
+    SUM(CASE WHEN is_violation = TRUE THEN total_ot_paid ELSE 0 END) as total_illegal_ot_spend
+
+FROM `pay-errors.otpay.top_5_agencies_labels`;
