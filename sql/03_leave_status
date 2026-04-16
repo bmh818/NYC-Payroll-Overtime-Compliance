@@ -1,0 +1,20 @@
+SELECT 
+    leave_status AS Leave_Status,
+    COUNT(*) AS Employee_Count,
+    
+    -- Identifying only the violating managers in these statuses
+    COUNTIF(is_violation = TRUE) AS Violator_Count,
+    
+    -- Financial Impact
+    ROUND(AVG(total_ot_paid), 2) AS Avg_OT_Paid,
+    ROUND(SUM(total_ot_paid), 2) AS Total_OT_For_Status,
+    
+    -- Intensity Check: Is someone "Ceased" or "On Leave" getting a massive check?
+    ROUND(MAX(total_ot_paid), 2) AS Max_Single_Payout
+
+FROM `pay-errors.otpay.top_5_agencies_labels`
+-- Filter for managers above the legal salary threshold
+WHERE is_manager = TRUE 
+  AND base_salary > 64350
+GROUP BY 1
+ORDER BY Avg_OT_Paid DESC;
