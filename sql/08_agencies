@@ -1,0 +1,38 @@
+SELECT 
+  agency_name AS `Agency Name`,
+  
+  -- 1. Total Workers in the Agency (Full Population)
+  MAX(agency_total_count) AS `Total Agency Workers`,
+
+  -- 2. Total Managers in the Agency (Managerial Population)
+  MAX(agency_manager_count) AS `Total Managers`,
+
+  -- 3. Number of Violating Managers (Above $64,350 with OT)
+  COUNTIF(is_violation = TRUE) AS `Number of Violators`, 
+
+  -- 4. Violation Rate within the Management Tier
+  ROUND(COUNTIF(is_violation = TRUE) / NULLIF(MAX(agency_manager_count), 0) * 100, 2) AS `Manager Violation Rate %`,
+  
+  -- 5. Cost Metrics for Violators
+  ROUND(SUM(CASE WHEN is_violation = TRUE THEN total_ot_paid ELSE 0 END), 2) AS `Total Illegal OT`,
+  ROUND(AVG(CASE WHEN is_violation = TRUE THEN total_ot_paid END), 2) AS `Average Illegal OT`,
+  
+  -- 6. Extreme Payouts
+  ROUND(MAX(CASE WHEN is_violation = TRUE THEN total_ot_paid END), 2) AS `Highest Individual Violator`,
+  
+  -- 7. OT Impact % (OT vs Base Salary for violators)
+  ROUND((SUM(CASE WHEN is_violation = TRUE THEN total_ot_paid ELSE 0 END) / 
+         NULLIF(SUM(CASE WHEN is_violation = TRUE THEN base_salary ELSE 0 END), 0))*100, 2) AS `OT Impact Percent`
+
+FROM (
+  -- Subquery to calculate totals using Window Functions before the WHERE clause kicks in
+  SELECT *, 
+    COUNT(*) OVER(PARTITION BY agency_name) as agency_total_count,
+    COUNTIF(is_manager = TRUE) OVER(PARTITION BY agency_name) as agency_manager_count
+  FROM `pay-errors.otpay.top_5_agencies_labels`
+)
+WHERE is_manager = TRUE 
+  AND base_salary > 64350
+GROUP BY 1
+HAVING `Number of Violators` > 0
+ORDER BY `Total Illegal OT` DESC;
