@@ -1,0 +1,32 @@
+SELECT 
+  CASE 
+    WHEN base_salary BETWEEN 64350 AND 90000 THEN 'Mid-Level ($64k-$90k)'
+    WHEN base_salary BETWEEN 90001 AND 130000 THEN 'Senior ($90k-$130k)'
+    WHEN base_salary > 130000 THEN 'Executive ($130k+)'
+    ELSE 'Below Audit Threshold'
+  END AS Salary_Tier,
+
+  -- 1. Total Managers in this Tier
+  COUNTIF(is_manager = TRUE) AS Total_Managers,
+
+  -- 2. Number of Violating Managers (Those paid OT)
+  COUNTIF(is_violation = TRUE) AS Violator_Count,
+
+  -- 3. Violation Rate % (Violators / Managers in this Tier)
+  ROUND(
+    (COUNTIF(is_violation = TRUE) / NULLIF(COUNTIF(is_manager = TRUE), 0)) * 100, 
+    2
+  ) AS Violation_Rate_Percent,
+
+  -- 4. Total Taxpayer Loss (Sum of OT for Violators in this Tier)
+  ROUND(
+    SUM(CASE WHEN is_violation = TRUE THEN total_ot_paid ELSE 0 END), 
+    2
+  ) AS Total_Taxpayer_Loss
+
+FROM `pay-errors.otpay.top_5_agencies_labels`
+-- We only care about managers above the legal threshold for this specific report
+WHERE is_manager = TRUE 
+  AND base_salary > 64350
+GROUP BY 1
+ORDER BY 1;
