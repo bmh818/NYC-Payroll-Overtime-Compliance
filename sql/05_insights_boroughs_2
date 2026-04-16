@@ -1,0 +1,30 @@
+SELECT 
+  COALESCE(work_location_borough, 'REMOTE/UNKNOWN') AS `Borough`,
+  
+  -- 1. Number of Violating Managers in this Borough
+  COUNTIF(is_violation = TRUE) AS `Number of Violators`, 
+  
+  -- 2. Productivity & Cost Metrics for Violators
+  ROUND(SUM(CASE WHEN is_violation = TRUE THEN ot_hours ELSE 0 END), 2) AS `Total OT Hours`,
+  ROUND(SUM(CASE WHEN is_violation = TRUE THEN total_ot_paid ELSE 0 END), 2) AS `Total Illegal OT`,
+  ROUND(AVG(CASE WHEN is_violation = TRUE THEN total_ot_paid END), 2) AS `Average Illegal OT`,
+  
+  -- 3. The Floor and Ceiling for individual payouts in this Borough
+  ROUND(MIN(CASE WHEN is_violation = TRUE THEN total_ot_paid END), 2) AS `Lowest Individual Violator`,
+  ROUND(MAX(CASE WHEN is_violation = TRUE THEN total_ot_paid END), 2) AS `Highest Individual Violator`,
+  
+  -- 4. Financial Impact % (Illegal OT Paid vs Base Salary for these violators)
+  ROUND((SUM(CASE WHEN is_violation = TRUE THEN total_ot_paid ELSE 0 END) / 
+         NULLIF(SUM(CASE WHEN is_violation = TRUE THEN base_salary ELSE 0 END), 0)) * 100, 2) AS `OT Impact Percent`,
+  
+  -- 5. Effective Hourly Rate for Managers in this Borough
+  ROUND(SUM(CASE WHEN is_violation = TRUE THEN total_ot_paid ELSE 0 END) / 
+         NULLIF(SUM(CASE WHEN is_violation = TRUE THEN ot_hours ELSE 0 END), 0), 2) AS `Avg Hourly OT Rate`
+
+FROM `pay-errors.otpay.top_5_agencies_labels`
+WHERE is_manager = TRUE 
+  AND base_salary > 64350
+GROUP BY 1
+HAVING `Number of Violators` > 0
+ORDER BY `Total Illegal OT` DESC 
+LIMIT 25;
