@@ -1,0 +1,22 @@
+SELECT 
+  title_description AS `Title Description`, 
+  COUNTIF(is_violation = TRUE) AS `Number of Violators`, 
+  ROUND(SUM(CASE WHEN is_violation = TRUE THEN ot_hours ELSE 0 END), 2) AS `Total OT Hours`,
+  ROUND(SUM(CASE WHEN is_violation = TRUE THEN total_ot_paid ELSE 0 END), 2) AS `Total Illegal OT`,
+  ROUND(AVG(CASE WHEN is_violation = TRUE THEN total_ot_paid END), 2) AS `Average Illegal OT`,
+  ROUND(MIN(CASE WHEN is_violation = TRUE THEN total_ot_paid END), 2) AS `Lowest Individual Violator`,
+  ROUND(MAX(CASE WHEN is_violation = TRUE THEN total_ot_paid END), 2) AS `Highest Individual Violator`,
+  -- Impact: How much OT was paid out relative to their base salary for these violators
+  ROUND((SUM(CASE WHEN is_violation = TRUE THEN total_ot_paid ELSE 0 END) / 
+         NULLIF(SUM(CASE WHEN is_violation = TRUE THEN base_salary ELSE 0 END), 0)) * 100, 2) AS `OT Impact Percent`,
+  -- Efficiency Check: What is the effective hourly rate they are getting for OT?
+  ROUND(SUM(CASE WHEN is_violation = TRUE THEN total_ot_paid ELSE 0 END) / 
+         NULLIF(SUM(CASE WHEN is_violation = TRUE THEN ot_hours ELSE 0 END), 0), 2) AS `Avg Hourly OT Rate`
+
+FROM `pay-errors.otpay.top_5_agencies_labels`
+WHERE is_manager = TRUE 
+  AND base_salary > 64350
+GROUP BY 1
+HAVING `Number of Violators` > 0
+ORDER BY `Total Illegal OT` DESC 
+LIMIT 25;
