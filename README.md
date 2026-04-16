@@ -32,9 +32,9 @@ Under NY State and NYC labor standards, employees in managerial roles earning ab
 
 | File Name | Description |
 | :--- | :--- |
-| `NYC_Payroll_Transformed_Data.csv` | Processed dataset with calculated fields for hourly rates. |
-| `Payroll_Aggregation_Summary.xlsx` | Workbook containing pivot tables and final liability calculations. |
-| `analysis_queries.sql.txt` | Recovered SQL logic for data cleaning and transformation. |
+| `NYC_Payroll_Transformed_Data.csv` | Processed dataset |
+| `Python_Code.md` | Workbook containing all python code used during analysis |
+| [🔗 Project Change Log](https://docs.google.com/spreadsheets/d/1_RHQzvZUgc70d_aoxndWNODEZnbIsDZJL_8E531G2F0/edit?usp=sharing) | Live audit trail and methodology updates |
 
 ---
 
