@@ -1,0 +1,449 @@
+import pandas as pd
+import numpy as np
+from google.cloud import bigquery
+
+# 1. Setup the connection with your REFINED table
+client = bigquery.Client()
+# Updated to your new production table
+table_id = "pay-errors.otpay.top_5_agencies_labels"
+
+# 2. Pull the pre-flagged violators
+# Using the column we engineered in Phase 2
+query = f"""
+SELECT
+    agency_name,
+    title_description,
+    base_salary,
+    total_ot_paid,
+    ot_hours,
+    work_location_borough,
+    agency_start_date,
+    leave_status
+FROM `{table_id}`
+WHERE is_violation = TRUE
+"""
+
+print("🚀 Fetching verified violation data from BigQuery...")
+df_violators = client.query(query).to_dataframe()
+
+# Check if we actually got data
+if df_violators.empty:
+    print("❌ Check failed: No records found with is_violation = TRUE.")
+    print("Verify your BigQuery table: pay-errors.otpay.top_5_agencies_labels")
+else:
+    print(f"✅ Success! Analyzing {len(df_violators):,} records of confirmed managerial OT violations.")
+
+    # --- STEP 1: THE STATISTICAL SNAPSHOT ---
+    # We focus on the money paid and the hours worked
+    snapshot = df_violators[['base_salary', 'total_ot_paid', 'ot_hours']].describe()
+
+    # --- STEP 2: THE IQR OUTLIER TEST ---
+    # Identifying the "Whales" in the dataset
+    Q1 = df_violators['total_ot_paid'].quantile(0.25)
+    Q3 = df_violators['total_ot_paid'].quantile(0.75)
+    IQR = Q3 - Q1
+
+    # Define the 'Statistical Outlier' boundary
+    upper_bound = Q3 + (1.5 * IQR)
+
+    # Filter for the extreme offenders
+    extreme_outliers = df_violators[df_violators['total_ot_paid'] > upper_bound].sort_values(by='total_ot_paid', ascending=False)
+
+    # Calculate Total Financial Exposure for these outliers
+    total_outlier_cost = extreme_outliers['total_ot_paid'].sum()
+
+    # --- DISPLAY RESULTS ---
+    print("\n" + "📊 " + "="*40)
+    print("PHASE 3: STATISTICAL AUDIT SUMMARY")
+    print("="*42)
+    print(snapshot)
+
+    print("\n" + "🚨 " + "="*40)
+    print("EXTREME OUTLIER REPORT (THE 'WALL OF SHAME')")
+    print("="*42)
+    print(f"Statistical Outlier Threshold: ${upper_bound:,.2f}")
+    print(f"Total Outliers Detected: {len(extreme_outliers)}")
+    print(f"Total Taxpayer Loss from Outliers: ${total_outlier_cost:,.2f}")
+
+    print("\nTop 5 Offenders for Phase 4 Visualization:")
+    # Displaying relevant columns for the final report
+    cols_to_show = ['agency_name', 'title_description', 'total_ot_paid', 'ot_hours']
+    print(extreme_outliers[cols_to_show].head(5))
+
+
+--New Code Block--
+
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Set the style for a professional audit report
+sns.set_theme(style="whitegrid")
+fig, axes = plt.subplots(1, 2, figsize=(16, 7))
+
+# --- 1. THE BOX PLOT (The Outlier Detector) ---
+# This shows the "Spread" and identifies the "Whales" as dots beyond the whiskers
+sns.boxplot(ax=axes[0], x=df_violators['total_ot_paid'], color='crimson', flierprops={"marker": "x"})
+axes[0].set_title('Detection of Managerial OT Outliers', fontsize=14, fontweight='bold')
+axes[0].set_xlabel('Total Illegal OT Paid ($)', fontsize=12)
+
+# --- 2. THE HISTOGRAM (The Volume Detector) ---
+# This shows where the majority of violators sit
+sns.histplot(ax=axes[1], data=df_violators, x='total_ot_paid', bins=40, kde=True, color='steelblue')
+axes[1].set_title('Frequency of Violation Amounts', fontsize=14, fontweight='bold')
+axes[1].set_xlabel('Total Illegal OT Paid ($)', fontsize=12)
+axes[1].set_ylabel('Number of Managers', fontsize=12)
+
+# ADDING THE "VIOLATION THRESHOLD" LINE
+# This ties your Step 2 logic (IQR) directly into the visual
+if 'upper_bound' in locals():
+    axes[1].axvline(upper_bound, color='red', linestyle='--', label=f'Outlier Threshold (${upper_bound:,.0f})')
+    axes[1].legend()
+
+# Final Polish
+plt.suptitle('Audit Visualization: Non-Compliant Managerial Overtime', fontsize=16, y=1.02)
+plt.tight_layout()
+plt.show()
+
+
+--New Code Block--
+
+
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+# 1. Calculate the Correlation Coefficient
+# We want to see if higher salary = higher illegal OT
+correlation = df_violators['base_salary'].corr(df_violators['total_ot_paid'])
+
+print(f"--- 📊 2026 Systemic Audit Result ---")
+print(f"Correlation Coefficient: {correlation:.4f}")
+if correlation > 0.3:
+    print("⚠️ WARNING: Moderate positive correlation detected. High-salary managers are taking significantly more OT.")
+elif correlation < -0.1:
+    print("ℹ️ Note: Negative correlation. Lower-salaried managers are the primary OT earners.")
+else:
+    print("✅ Low Correlation: OT distribution is independent of salary level.")
+
+# 2. Plotting the 'Compliance Decay'
+plt.figure(figsize=(12, 7))
+
+# Scatter plot with regression line
+# 'alpha=0.1' helps us see density (where the most dots are overlapping)
+sns.regplot(data=df_violators, x='base_salary', y='total_ot_paid',
+            scatter_kws={'alpha':0.15, 'color':'slategray', 's':10},
+            line_kws={'color':'darkred', 'lw':3, 'label':f'Trend Line (corr: {correlation:.2f})'})
+
+# 3. Add the Legal Threshold Marker
+plt.axvline(x=64350, color='orange', linestyle='--', linewidth=2, label='Legal OT Threshold ($64,350)')
+plt.fill_betweenx([0, df_violators['total_ot_paid'].max()], 64350, df_violators['base_salary'].max(),
+                 color='red', alpha=0.05, label='Non-Compliance Zone')
+
+plt.title('Systemic Audit: Base Salary vs. Illegal OT Payouts', fontsize=15, fontweight='bold')
+plt.xlabel('Manager Base Salary ($)', fontsize=12)
+plt.ylabel('Total OT Paid ($)', fontsize=12)
+plt.grid(True, linestyle=':', alpha=0.6)
+plt.legend(loc='upper right')
+
+plt.show()
+
+
+--New Code Block--
+
+
+# 1. Pull the absolute baseline from the master clean table
+raw_universe_query = "SELECT COUNT(*) as total FROM `pay-errors.otpay.clean_payroll_data_leave_status`"
+total_city_rows = client.query(raw_universe_query).to_dataframe().iloc[0,0]
+
+# 2. Pull the count of ALL managers in your Top 5 (regardless of violation)
+manager_universe_query = "SELECT COUNT(*) as total FROM `pay-errors.otpay.top_5_agencies_labels` WHERE is_manager = TRUE"
+total_managers_top5 = client.query(manager_universe_query).to_dataframe().iloc[0,0]
+
+# 3. Calculate metrics from your existing df_violators
+final_violators = len(df_violators)
+total_illegal_spend = df_violators['total_ot_paid'].sum()
+
+print(f"--- 🏛️ PHASE 3: FINAL AUDIT AUTOMATION SUMMARY ---")
+print(f"1. Initial City Universe:      {total_city_rows:,} payroll records")
+print(f"2. Focused Managerial Group:   {total_managers_top5:,} managers (Top 5 Agencies)")
+print(f"3. Identified Violations:      {final_violators:,} managers exceeding $64,350 + OT")
+print("-" * 50)
+print(f"Audit Precision: {(final_violators / total_city_rows) * 100:.2f}% of total city workforce are in-scope violators.")
+print(f"Managerial Non-Compliance: {(final_violators / total_managers_top5) * 100:.2f}% of audited managers are in violation.")
+print(f"Total Financial Exposure:   ${total_illegal_spend:,.2f}")
+print("-" * 50)
+
+
+--New Code Block--
+
+
+# 1. Borough Analysis: Geographical Compliance Hotspots
+# We aggregate to see where the "Density" of the money is moving
+borough_stats = df_violators.groupby('work_location_borough')['total_ot_paid'].agg(['count', 'mean', 'sum']).sort_values(by='sum', ascending=False)
+
+print("--- 📍 Borough Violation Summary ---")
+# Renaming for a professional report output
+borough_stats.columns = ['Violator Count', 'Avg Payout', 'Total Taxpayer Cost']
+print(borough_stats.head(10))
+
+# 2. Top 10 Violating Job Titles: The "Systemic Leak"
+# We look at the titles costing the most in total across the Top 5 agencies
+top_titles = df_violators.groupby('title_description')['total_ot_paid'].agg(['count', 'sum']).nlargest(10, 'sum')
+
+print("\n--- 💼 Top 10 'Systemic Leak' Titles ---")
+top_titles.columns = ['Number of Violators', 'Total Illegal OT Paid']
+print(top_titles)
+
+# 3. Tenure Analysis: The "Old Guard" Test
+# Testing if longer employment leads to higher rates of non-compliance
+if 'agency_start_date' in df_violators.columns:
+    # Use 2026 as the current audit baseline
+    df_violators['years_tenure'] = 2026 - pd.to_datetime(df_violators['agency_start_date']).dt.year
+    tenure_corr = df_violators['years_tenure'].corr(df_violators['total_ot_paid'])
+
+    print(f"\n--- ⏳ Tenure Analysis ---")
+    print(f"Tenure Correlation: {tenure_corr:.4f}")
+
+    if tenure_corr > 0.2:
+        print("🚩 Result: Positive Correlation. The 'Old Guard' is taking significantly more OT.")
+    elif tenure_corr < -0.2:
+        print("ℹ️ Result: Negative Correlation. Newer managers are the primary OT earners.")
+    else:
+        print("✅ Result: No significant relationship between tenure and OT violations.")
+else:
+    print("\n⚠️ Note: 'agency_start_date' not found. Skipping Tenure Analysis.")
+
+
+--New Code Block--
+
+
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+# 1. Setting the visual style for a "Stakeholder" report
+plt.figure(figsize=(16, 8))
+sns.set_theme(style="whitegrid")
+
+# 2. Sort Boroughs by Median OT to make the chart "readable"
+# This ensures the most expensive borough is on the left
+borough_order = df_violators.groupby('work_location_borough')['total_ot_paid'].median().sort_values(ascending=False).index
+
+# 3. Creating the Box Plot
+# 'showfliers=True' ensures we see the "Whales" (the individual outlier dots)
+ax = sns.boxplot(
+    data=df_violators,
+    x='work_location_borough',
+    y='total_ot_paid',
+    order=borough_order,
+    palette="flare",
+    showfliers=True
+)
+
+# 4. Customizing the display
+plt.title('Geographical Analysis: Illegal Managerial OT Distribution by Borough (FY 2026)', fontsize=18, fontweight='bold')
+plt.xlabel('Work Location Borough', fontsize=14)
+plt.ylabel('Total OT Paid ($)', fontsize=14)
+
+# Add a horizontal line for the "Outlier Threshold" we calculated earlier
+if 'upper_bound' in locals():
+    plt.axhline(upper_bound, color='red', linestyle='--', alpha=0.6, label=f'Extreme Outlier Threshold (${upper_bound:,.0f})')
+    plt.legend()
+
+plt.xticks(rotation=45)
+plt.tight_layout()
+plt.show()
+
+
+--New Code Block--
+
+
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+# 1. Grouping the data by Title and calculating the Total OT Paid
+# We use nlargest(10) to focus the audit on the most expensive job categories
+title_impact = df_violators.groupby('title_description')['total_ot_paid'].sum().nlargest(10).reset_index()
+
+# 2. Setting up the Plot
+plt.figure(figsize=(14, 10))
+sns.set_theme(style="white") # Cleaner background for financial reports
+
+# Using a "Reds_r" palette (reversed) so the most expensive title is the darkest red
+ax = sns.barplot(data=title_impact, x='total_ot_paid', y='title_description', palette="Reds_r")
+
+# 3. Adding Data Labels (to show the exact dollar amount on the bars)
+for index, row in title_impact.iterrows():
+    value = row['total_ot_paid']
+    plt.text(value, index, f' ${value:,.0f}', va='center', fontsize=12, fontweight='bold', color='darkred')
+
+# 4. Customizing the display for a "Boardroom" look
+plt.title('Top 10 Job Titles: Total Illegal OT Expenditure (FY 2026)', fontsize=18, fontweight='bold', pad=20)
+plt.xlabel('Total OT Paid ($)', fontsize=13)
+plt.ylabel('Job Title', fontsize=13)
+
+# Remove the top and right spines for a modern, clean look
+sns.despine(left=True, bottom=True)
+
+plt.tight_layout()
+plt.show()
+
+
+--New Code Block--
+
+
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+# 1. Group by Agency to calculate the financial and behavioral risk
+agency_risk = df_violators.groupby('agency_name').agg({
+    'total_ot_paid': ['sum', 'mean', 'count'],
+    'base_salary': 'mean'
+})
+
+# 2. Flatten the multi-index columns for easier analysis
+agency_risk.columns = ['Total_Illegal_OT', 'Avg_OT_Per_Manager', 'Number_of_Violators', 'Avg_Base_Salary']
+
+# 3. Feature Engineering: Risk Intensity
+# What % of the average manager's salary is being added via illegal OT?
+agency_risk['OT_Padding_Intensity_Pct'] = (agency_risk['Avg_OT_Per_Manager'] / agency_risk['Avg_Base_Salary']) * 100
+
+# 4. Sort by Total Illegal OT to identify the "Primary Offenders"
+agency_risk = agency_risk.sort_values(by='Total_Illegal_OT', ascending=False).head(10)
+
+# 5. Visualize the "High-Risk Agencies"
+plt.figure(figsize=(14, 8))
+sns.set_theme(style="white")
+
+# Creating the bar plot
+ax = sns.barplot(
+    data=agency_risk.reset_index(),
+    x='Total_Illegal_OT',
+    y='agency_name',
+    palette="Purples_r"
+)
+
+# 6. Adding Data Labels for Stakeholders
+for i, value in enumerate(agency_risk['Total_Illegal_OT']):
+    plt.text(value, i, f' ${value:,.0f}', va='center', fontsize=11, fontweight='bold', color='indigo')
+
+plt.title('Agency Risk Audit: Total Managerial OT Expenditure (FY 2026)', fontsize=18, fontweight='bold', pad=20)
+plt.xlabel('Total Taxpayer Dollars Lost ($)', fontsize=13)
+plt.ylabel('Agency Name', fontsize=13)
+sns.despine(left=True, bottom=True)
+
+plt.tight_layout()
+plt.show()
+
+# 7. Print the Risk Table for the Audit Log
+print("\n" + "📋 " + "="*60)
+print("AGENCY RISK RANKING (SORTED BY TOTAL LOSS)")
+print("="*64)
+print(agency_risk[['Number_of_Violators', 'Total_Illegal_OT', 'OT_Padding_Intensity_Pct']])
+
+
+--New Code Block--
+
+
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+# 1. Feature Engineering: Calculate Tenure for 2026
+# Converting start date to datetime and calculating years of service
+df_violators['agency_start_date'] = pd.to_datetime(df_violators['agency_start_date'], errors='coerce')
+df_violators['years_at_agency'] = 2026 - df_violators['agency_start_date'].dt.year
+
+# 2. Cleaning: Isolate valid tenure data for the "Smoking Gun" test
+# We keep only rows where both tenure and OT paid are present
+tenure_df = df_violators.dropna(subset=['years_at_agency', 'total_ot_paid'])
+
+# 3. The Visualization: Tenure vs. Compliance
+plt.figure(figsize=(14, 7))
+sns.set_theme(style="white")
+
+# 'x_jitter' adds a tiny bit of horizontal noise so points don't stack perfectly on top of each other
+sns.regplot(
+    data=tenure_df,
+    x='years_at_agency',
+    y='total_ot_paid',
+    x_jitter=0.2,
+    scatter_kws={'alpha':0.2, 'color':'teal', 's':20},
+    line_kws={'color':'darkorange', 'lw':3, 'label':'Tenure Trend Line'}
+)
+
+plt.title('Institutional Audit: Does Tenure Correlate with OT Violations?', fontsize=16, fontweight='bold')
+plt.xlabel('Years of Service (Tenure)', fontsize=13)
+plt.ylabel('Total Illegal OT Paid ($)', fontsize=13)
+plt.grid(True, axis='y', linestyle='--', alpha=0.3)
+plt.legend()
+
+plt.show()
+
+# 4. The "Smoking Gun" Math
+tenure_corr = tenure_df['years_at_agency'].corr(tenure_df['total_ot_paid'])
+
+print(f"\n" + "="*40)
+print(f"🏛️  TENURE CORRELATION RESULT")
+print(f"="*40)
+print(f"Correlation Coefficient: {tenure_corr:.4f}")
+
+if tenure_corr > 0.2:
+    print("🚨 FINDING: Systemic issue identified. Tenure increases likelihood of high-dollar violations.")
+elif tenure_corr < -0.2:
+    print("ℹ️ FINDING: New-hire issue identified. Junior managers are the primary violators.")
+else:
+    print("✅ FINDING: No significant relationship. Overtime behavior is independent of years of service.")
+print("="*40)
+
+
+--New Code Block--
+
+
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+import numpy as np
+
+# 1. PREP THE DATA FOR MATH
+# We create a copy so we don't mess up our original DataFrame
+corr_df = df_violators.copy()
+
+# Convert Date to Tenure (Numerical)
+corr_df['agency_start_date'] = pd.to_datetime(corr_df['agency_start_date'], errors='coerce')
+corr_df['years_tenure'] = 2026 - corr_df['agency_start_date'].dt.year
+
+# 2. SELECT THE KEY AUDIT VARIABLES
+# We include numerical columns and "Dummy" variables for the categories
+# This turns 'Borough' into 'Borough_Manhattan', 'Borough_Brooklyn', etc.
+analysis_cols = ['total_ot_paid', 'base_salary', 'years_tenure', 'ot_hours',
+                 'work_location_borough', 'agency_name', 'leave_status']
+
+# Convert categories to numbers (One-Hot Encoding)
+final_corr_df = pd.get_dummies(corr_df[analysis_cols], columns=['work_location_borough', 'agency_name', 'leave_status'])
+
+# 3. CALCULATE THE CORRELATION MATRIX
+matrix = final_corr_df.corr()
+
+# 4. VISUALIZE THE HEATMAP
+plt.figure(figsize=(16, 10))
+sns.set_theme(style="white")
+
+# We use a diverging palette: Red for positive correlation, Blue for negative
+mask = np.triu(np.ones_like(matrix, dtype=bool)) # Hides the top half for a cleaner "Triangle" look
+sns.heatmap(matrix, mask=mask, annot=False, cmap='coolwarm', center=0, linewidths=.5)
+
+plt.title('The Audit Heatmap: Identifying Hidden Drivers of Illegal OT', fontsize=18, fontweight='bold')
+plt.show()
+
+# 5. THE "NEAT LIST" OF DRIVERS
+# Focus only on what correlates with 'total_ot_paid'
+print("\n" + "🔍 " + "="*50)
+print("TOP DRIVERS OF ILLEGAL OVERTIME (CORRELATION TO PAYOUT)")
+print("="*54)
+payout_drivers = matrix['total_ot_paid'].sort_values(ascending=False)
+
+# Filter for the top 10 most significant relationships (positive or negative)
+print(payout_drivers.head(10))
+print("\n... and the strongest inverse relationships:")
+print(payout_drivers.tail(5))
