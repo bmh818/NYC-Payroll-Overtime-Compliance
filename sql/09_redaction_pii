@@ -1,0 +1,5 @@
+CREATE OR REPLACE TABLE `pay-errors.otpay.clean_payroll_data` AS
+
+SELECT * EXCEPT (`Last Name`, `First Name`, `Mid Init`)
+
+FROM `pay-errors.otpay.stg_payroll_data`
