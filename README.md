@@ -1,4 +1,4 @@
-# NYC Managerial Overtime Compliance Audit: Fiscal Year 2025
+# NYC Wage Compliance Audit: Fiscal Year 2025
 
 ## Project Overview
 This repository contains a forensic payroll audit of New York City municipal employees for the 2025 fiscal year. By analyzing a dataset of over 6 million records from NYC Open Data, this study identifies potential labor law violations where employees classified as **Exempt (Managerial/Executive)** were paid overtime despite exceeding the legal salary threshold.
@@ -9,12 +9,11 @@ Under NY State and NYC labor standards, employees in managerial roles earning ab
 ---
 
 ## Analysis Methodology
-* **Data Transformation:** Filtered 6M+ records to a subset of "Per Annum" employees with "Manager", "Director", or "Executive" titles earning > $64,350.
-* **Compliance Logic:** Applied a boolean flag to any record where `Base_Salary > 64350` AND `OT_Paid > 0`.
+* **Data Transformation:** Filtered 6.7M records to a verified sample based on active employment status, "Per Annum" pay basis, and managerial titles.
+* **Compliance Logic:** Applied boolean flags (`is_manager`, `is_violation`) to records where Base Salary > $64,350 and OT Paid > 0.
 * **Tech Stack:**
-    * **SQL (BigQuery):** Heavy lifting for dataset subsetting and "Compliance Flag" engineering.
-    * **Python (Pandas):** Exploratory Data Analysis (EDA) and identifying statistical outliers in OT payments.
-    * **Tableau/Sheets:** Visualization of agency-wide non-compliance trends and the "Wall of Shame" dashboard.
+    * **SQL (BigQuery):** Primary data extraction, cleaning, and transformation.
+    * **Google Sheets:** Statistical enrichment, data aggregation, and pivot table analysis.
 
 ---
 
@@ -22,10 +21,10 @@ Under NY State and NYC labor standards, employees in managerial roles earning ab
 
 | Metric | Result |
 | :--- | :--- |
-| **Total Flagged Records** | [TBD - Count of Managers getting OT] |
-| **Max Threshold Violation** | [TBD - Highest OT paid to a single Manager] |
-| **Estimated Budget Impact** | [TBD - Total sum of all ineligible OT paid] |
-| **Highest Risk Agency** | [TBD - Agency with the most flagged records] |
+| **Total Flagged Records** | 502 |
+| **Max Threshold Violation** | $122,057.18 |
+| **Financial Liability** | $10,616,321.19 |
+| **Primary Risk Sectors** | DEPARTMENT OF SANITATION |
 
 ---
 
@@ -33,9 +32,9 @@ Under NY State and NYC labor standards, employees in managerial roles earning ab
 
 | File Name | Description |
 | :--- | :--- |
-| `NYC_Managerial_OT_Subset.csv` | Cleaned dataset of managers earning >$64,350. |
-| `Compliance_Analysis.ipynb` | Python Notebook containing statistical summaries and outlier detection. |
-| `Manager_Audit_Queries.sql` | SQL scripts for data cleaning, joining, and flag creation. |
+| `NYC_Payroll_Transformed_Data.csv` | Processed dataset with calculated fields for hourly rates. |
+| `Payroll_Aggregation_Summary.xlsx` | Workbook containing pivot tables and final liability calculations. |
+| `analysis_queries.sql.txt` | Recovered SQL logic for data cleaning and transformation. |
 
 ---
 
